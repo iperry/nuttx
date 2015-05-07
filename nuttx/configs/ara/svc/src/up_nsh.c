@@ -37,7 +37,7 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
-#define DBG_COMP DBG_DBG     /* DBG_COMP macro of the component */
+#define DBG_COMP DBG_SVC     /* DBG_COMP macro of the component */
 
 #include <nuttx/config.h>
 
@@ -61,18 +61,41 @@
 
 #define RETRY_TIME_S    (5)
 
+// 90.8512ms 13500 ish
+
+unsigned int boot_delay = 14000;
+
+int failed = 0;
+#define TRIGGER_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN7)
+#define INTERFACE_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN8)
+
 int nsh_archinitialize(void)
 {
+    lldbg("base delay %u\n", boot_delay);
     int rc = 0;
     do {
         rc = svc_init();
-        if (rc < 0) {
-            dbg_error("%s: SVC Initialization failed. Retrying in %u",
-                      __func__,
-                      RETRY_TIME_S);
-            sleep(RETRY_TIME_S);
+        if (!rc && failed) {
+            boot_delay += 80000;
+            failed = 0;
+        } else if (rc) {
+            stm32_gpiowrite(INTERFACE_GPIO, false);
+            stm32_gpiowrite(TRIGGER_GPIO, false);
+            up_udelay(50);
+            stm32_gpiowrite(TRIGGER_GPIO, true);
+            stm32_gpiowrite(TRIGGER_GPIO, false);
+            failed = 1;
+            lldbg("Failed. Boot delay: %u\n", boot_delay);
+            while (1)
+                ;
         }
-    } while (rc < 0);
+
+        boot_delay += 500;
+
+        svc_exit();
+    } while (1);
 
 	return OK;
 }

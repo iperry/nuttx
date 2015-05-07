@@ -518,11 +518,13 @@ static int es2_init_seq(struct tsb_switch *sw)
         return rc;
     }
 
+#if 0
     rc = es2_fixup_mphy(sw);
     if (rc) {
         dbg_error("%s: failed to fix up the M-PHY attributes\n",
                   __func__);
     }
+#endif
 
     return rc;
 }
@@ -1118,7 +1120,7 @@ static int es2_sys_ctrl_get(struct tsb_switch *sw,
     if (cnf.rc == 0) {
         *val = be32_to_cpu(cnf.rc);
     }
-    dbg_verbose("%s(): fid=0x%02x, rc=%u", cnf.function_id, cnf.rc);
+    dbg_verbose("%s(): fid=0x%02x, rc=%u\n", __func__, cnf.function_id, cnf.rc);
 
     return cnf.rc;
 }

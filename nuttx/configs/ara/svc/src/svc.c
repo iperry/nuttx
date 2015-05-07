@@ -91,7 +91,7 @@ struct svc_interface_device_id {
 static struct svc_interface_device_id devid[] = {
     { "apb1", DEV_ID_APB1 },
     { "apb2", DEV_ID_APB2 },
-    { "spring6", DEV_ID_SPRING6 },
+//    { "spring6", DEV_ID_SPRING6 },
 };
 
 /* Connections table */
@@ -175,7 +175,7 @@ static int setup_default_routes(struct tsb_switch *sw) {
                 if (rc) {
                     dbg_error("Failed to assign deviceID %u to interface %s\n",
                               devid[i].device_id, devid[i].interface_name);
-                    continue;
+                    return rc;
                 } else {
                     dbg_info("Set deviceID %d to interface %s (portID %d)\n",
                              devid[i].device_id, devid[i].interface_name,
@@ -185,6 +185,7 @@ static int setup_default_routes(struct tsb_switch *sw) {
         }
     }
 
+#if 0
     /* Connections setup */
     for (i = 0; i < ARRAY_SIZE(conn); i++) {
         /* Look up local and peer portIDs for the given deviceIDs */
@@ -232,6 +233,7 @@ static int setup_default_routes(struct tsb_switch *sw) {
     }
 
     switch_dump_routing_table(sw);
+#endif
 
     return 0;
 }
@@ -247,6 +249,8 @@ int svc_init(void) {
         return 0;
     }
 
+
+    dbg_set_config(0, DBG_ERROR);
     dbg_info("Initializing SVC\n");
 
     // Allocate and zero the sw struct
@@ -293,6 +297,7 @@ int svc_init(void) {
     rc = setup_default_routes(sw);
     if (rc) {
         dbg_error("%s: Failed to set default routes\n", __func__);
+        goto error2;
     }
 
     /*

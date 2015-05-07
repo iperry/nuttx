@@ -88,6 +88,8 @@ static int interface_config(struct interface *iface) {
 }
 
 
+extern unsigned int boot_delay;
+
 /**
  * @brief Turn on the power to this interface
  * @returns: 0 on success, <0 on error
@@ -102,10 +104,17 @@ int interface_pwr_enable(struct interface *iface) {
     dbg_verbose("Enabling interface %s.\n",
                 iface->name ? iface->name : "unknown");
 
+#define INTERFACE_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN8)
+#define TRIGGER_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN7)
     for (i = 0; i < iface->nr_vregs; i++) {
         stm32_gpiowrite(iface->vregs[i].gpio, iface->vregs[i].active_high);
         up_udelay(iface->vregs[i].hold_time);
     }
+
+        stm32_gpiowrite(INTERFACE_GPIO, true);
+        up_udelay(boot_delay);
 
     /* Update state */
     iface->power_state = true;
@@ -362,6 +371,7 @@ int interface_init(struct interface **ints,
             interface_exit();
             return rc;
         }
+#if 0
         rc = interface_generate_wakeout(interfaces[i], true);
         if (rc < 0) {
             dbg_error("Failed to generate wakeout on interface %s\n",
@@ -369,6 +379,7 @@ int interface_init(struct interface **ints,
             interface_exit();
             return rc;
         }
+#endif
     }
 
     return 0;

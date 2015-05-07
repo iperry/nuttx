@@ -141,9 +141,13 @@ static void switch_power_on_reset(struct tsb_switch *sw) {
     stm32_gpiowrite(sw->vreg_1p8, true);
     up_udelay(POWER_SWITCH_OFF_STABILISATION_TIME_US);
 
+#define INTERFACE_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN8)
     /* release reset */
     stm32_gpiowrite(sw->reset, true);
-    sleep(SWITCH_SETTLE_TIME_S);
+    stm32_gpiowrite(INTERFACE_GPIO, false);
+    up_udelay(POWER_SWITCH_OFF_STABILISATION_TIME_US * 2);
+
 }
 
 static void switch_power_off(struct tsb_switch *sw) {
@@ -1402,10 +1406,11 @@ struct tsb_switch *switch_init(struct tsb_switch *sw,
     /*
      * Sanity check
      */
-    if (switch_internal_getattr(sw, SWVER, &attr_value)) {
+    if (switch_internal_getattr(sw, SWSTA, &attr_value)) {
         dbg_error("Switch probe failed\n");
         goto error;
     }
+//    lldbg("linkstatus: %x\n", attr_value);
 
     // Init port <-> deviceID mapping table
     dev_ids_destroy(sw);

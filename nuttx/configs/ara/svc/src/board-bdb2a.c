@@ -195,6 +195,7 @@ DECLARE_SPRING_INTERFACE(8, (GPIO_PORTG | GPIO_PIN15), 13,
  */
 static struct interface *bdb2a_interfaces[] = {
     &apb1_interface,
+#if 0
     &apb2_interface,
     &apb3_interface,
     &gpb1_interface,
@@ -207,6 +208,7 @@ static struct interface *bdb2a_interfaces[] = {
     &bb6_interface,
     &bb7_interface,
     &bb8_interface,
+#endif
 };
 
 static struct ara_board_info bdb2a_board_info = {
@@ -245,6 +247,12 @@ struct ara_board_info *board_init(struct tsb_switch *sw) {
         return NULL;
     }
 
+#define TRIGGER_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN7)
+#define INTERFACE_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
+                      GPIO_PORTH | GPIO_PIN8)
+    stm32_configgpio(TRIGGER_GPIO);
+    stm32_configgpio(INTERFACE_GPIO);
     return &bdb2a_board_info;
 }
 

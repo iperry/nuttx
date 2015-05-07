@@ -23,6 +23,8 @@ extern uint32_t _sdata_lma;
 void __start(void) __attribute__((section(".bootstrap.loader")));
 
 void __start(void) {
+    while (1)
+        ;
 #ifdef CONFIG_BOOT_COPYTORAM
     extern void bootstrap(void);
     bootstrap();
