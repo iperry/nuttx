@@ -113,8 +113,7 @@ int interface_pwr_enable(struct interface *iface) {
         up_udelay(iface->vregs[i].hold_time);
     }
 
-        stm32_gpiowrite(INTERFACE_GPIO, true);
-        up_udelay(boot_delay);
+    stm32_gpiowrite(INTERFACE_GPIO, false);
 
     /* Update state */
     iface->power_state = true;
@@ -362,7 +361,7 @@ int interface_init(struct interface **ints,
     }
 
     /* Let everything settle for a good long while.*/
-    up_udelay(POWER_OFF_TIME_IN_US);
+    up_udelay(30000);
 
     for (i = 0; i < nr_interfaces; i++) {
         rc = interface_pwr_enable(interfaces[i]);

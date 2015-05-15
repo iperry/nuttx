@@ -38,6 +38,7 @@ extern struct svc *ara_svc;
 
 int svc_init(void);
 void svc_exit(void);
+int svc_eng330(int bridge_first, int sweep, int delay);
 
 #endif
 

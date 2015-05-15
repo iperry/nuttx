@@ -40,6 +40,7 @@
 #define DBG_COMP DBG_SVC     /* DBG_COMP macro of the component */
 
 #include <nuttx/config.h>
+#include <nuttx/util.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -47,6 +48,8 @@
 #include <errno.h>
 
 #include "up_debug.h"
+#include "svc.h"
+#include "tsb_switch.h"
 #include "svc.h"
 
 #include "stm32.h"
@@ -63,7 +66,7 @@
 
 // 90.8512ms 13500 ish
 
-unsigned int boot_delay = 14000;
+unsigned int boot_delay = 0;
 
 int failed = 0;
 #define TRIGGER_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
@@ -71,31 +74,47 @@ int failed = 0;
 #define INTERFACE_GPIO (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_OUTPUT_CLEAR | \
                       GPIO_PORTH | GPIO_PIN8)
 
+extern int ara_svc_main(int argc, char *argv[]);
+extern const char* attr_get_name(uint16_t attr);
+
 int nsh_archinitialize(void)
 {
-    lldbg("base delay %u\n", boot_delay);
-    int rc = 0;
-    do {
-        rc = svc_init();
-        if (!rc && failed) {
-            boot_delay += 80000;
-            failed = 0;
-        } else if (rc) {
-            stm32_gpiowrite(INTERFACE_GPIO, false);
-            stm32_gpiowrite(TRIGGER_GPIO, false);
-            up_udelay(50);
-            stm32_gpiowrite(TRIGGER_GPIO, true);
-            stm32_gpiowrite(TRIGGER_GPIO, false);
-            failed = 1;
-            lldbg("Failed. Boot delay: %u\n", boot_delay);
-            while (1)
-                ;
+#if 0
+    const uint32_t regs[] = {
+        0xd000,
+        0xd010,
+        0xd020,
+        0xd061,
+        0xd083,
+        0xd095
+    };
+
+    const uint32_t delays[] = {0, 14000};
+
+    uint32_t i, j, v;
+    int rc;
+    struct tsb_switch *sw;
+
+    for (boot_delay = 0; boot_delay < 500000; boot_delay+= 500) {
+        printf("\nUsing delay: %u...", boot_delay);
+        if (svc_init()) {
+            printf("FAIL");
+        } else {
+            printf("OK");
+            return OK;
         }
-
-        boot_delay += 500;
-
+//        sw = ara_svc->sw;
+//        for (j = 0; j < ARRAY_SIZE(regs); j++) {
+//            rc = switch_dme_get(sw, 1, regs[j], 0, &v);
+//            if (!rc) {
+//                dbg_info("[%x] [%s]: 0x%x\n", regs[j], attr_get_name(regs[j]), v);
+//            } else  {
+//                dbg_error("failed to read attribute %x: rc: %u\n", regs[j], rc);
+//            }
+//        }
         svc_exit();
-    } while (1);
+    }
+#endif
 
 	return OK;
 }

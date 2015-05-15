@@ -132,7 +132,8 @@ static void switch_power_on_reset(struct tsb_switch *sw) {
     stm32_configgpio(sw->vreg_1p1);
     stm32_configgpio(sw->vreg_1p8);
     stm32_configgpio(sw->reset);
-    up_udelay(POWER_SWITCH_OFF_STABILISATION_TIME_US);
+    stm32_gpiowrite(sw->reset, false);
+    up_udelay(POWER_SWITCH_OFF_STABILISATION_TIME_US * 4);
 
     /* First 1V1, wait for stabilisation */
     stm32_gpiowrite(sw->vreg_1p1, true);
@@ -145,8 +146,7 @@ static void switch_power_on_reset(struct tsb_switch *sw) {
                       GPIO_PORTH | GPIO_PIN8)
     /* release reset */
     stm32_gpiowrite(sw->reset, true);
-    stm32_gpiowrite(INTERFACE_GPIO, false);
-    up_udelay(POWER_SWITCH_OFF_STABILISATION_TIME_US * 2);
+    stm32_gpiowrite(INTERFACE_GPIO, true);
 
 }
 
@@ -1438,17 +1438,19 @@ struct tsb_switch *switch_init(struct tsb_switch *sw,
     }
 
     // Create Switch interrupt handling worker
+#if 0
     rc = create_switch_irq_worker(sw);
     if (rc) {
         dbg_error("%s: Failed to create Switch IRQ worker\n", __func__);
         goto error;
     }
+#endif
 
     // Detect Unipro devices
-    rc = switch_detect_devices(sw, &link_status);
-    if (rc) {
-        goto error;
-    }
+//    rc = switch_detect_devices(sw, &link_status);
+//    if (rc) {
+//        goto error;
+//    }
 
     return sw;
 
@@ -1467,8 +1469,8 @@ error:
  */
 void switch_exit(struct tsb_switch *sw) {
     dbg_verbose("%s: Disabling switch\n", __func__);
-    switch_irq_enable(sw, false);
-    destroy_switch_irq_worker(sw);
+//    switch_irq_enable(sw, false);
+//    destroy_switch_irq_worker(sw);
     dev_ids_destroy(sw);
     switch_power_off(sw);
 }

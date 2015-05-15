@@ -240,6 +240,12 @@ static void dump_regs(void) {
     DBG_ATTR(TSB_MAILBOX);
     DBG_ATTR(TSB_MAXSEGMENTCONFIG);
     DBG_ATTR(TSB_DME_POWERMODEIND);
+    DBG_ATTR(TSB_DME_LAYERENABLEREQ)
+    DBG_ATTR(TSB_DME_RESETREQ);
+    DBG_ATTR(TSB_DME_LINKSTARTUPREQ);
+    DBG_ATTR(TSB_DME_ERRORPAIND);
+    DBG_ATTR(TSB_POWERSTATE);
+    DBG_ATTR(TSB_DEBUGLINKSTARTUP);
 
     lldbg("Unipro Interrupt Info:\n");
     lldbg("========================================\n");

@@ -250,7 +250,7 @@ int svc_init(void) {
     }
 
 
-    dbg_set_config(0, DBG_ERROR);
+    dbg_set_config(0, DBG_VERBOSE);
     dbg_info("Initializing SVC\n");
 
     // Allocate and zero the sw struct
@@ -297,7 +297,7 @@ int svc_init(void) {
     rc = setup_default_routes(sw);
     if (rc) {
         dbg_error("%s: Failed to set default routes\n", __func__);
-        goto error2;
+        return -1;
     }
 
     /*
@@ -306,6 +306,7 @@ int svc_init(void) {
      * Note: the IRQ must be enabled after all NCP commands have been sent
      * for the switch and Unipro devices initialization.
      */
+#if 0
     rc = switch_irq_enable(sw, true);
     if (rc && (rc != -EOPNOTSUPP)) {
         goto error2;
@@ -314,6 +315,7 @@ int svc_init(void) {
     /* Enable interrupts for all Unipro ports */
     for (i = 0; i < SWITCH_PORT_MAX; i++)
         switch_port_irq_enable(sw, i, true);
+#endif
 
     return 0;
 
@@ -342,3 +344,144 @@ void svc_exit(void) {
     the_svc.board_info = NULL;
 }
 
+static int eng330_linkup_test(struct ara_board_info *info, struct tsb_switch *sw, int bridge_first, int delay) {
+    int rc = 0;
+    uint32_t link_status;
+
+    if (bridge_first) {
+        rc = interface_init(info->interfaces,
+                            info->nr_interfaces,
+                            info->nr_spring_interfaces);
+        if (rc < 0) {
+            dbg_error("%s: Failed to initialize interfaces\n", __func__);
+            return -1;
+        }
+
+        up_udelay(delay);
+
+        sw = switch_init(sw,
+                        info->sw_1p1,
+                        info->sw_1p8,
+                        info->sw_reset,
+                        info->sw_irq);
+        if (!sw) {
+            dbg_error("%s: Failed to initialize switch.\n", __func__);
+            interface_exit();
+            the_svc.sw = NULL;
+            return -1;
+        }
+        the_svc.sw = sw;
+    } else {
+        sw = switch_init(sw,
+                        info->sw_1p1,
+                        info->sw_1p8,
+                        info->sw_reset,
+                        info->sw_irq);
+        if (!sw) {
+            dbg_error("%s: Failed to initialize switch.\n", __func__);
+            return -1;
+        }
+        the_svc.sw = sw;
+
+        up_udelay(delay);
+
+        rc = interface_init(info->interfaces,
+                            info->nr_interfaces,
+                            info->nr_spring_interfaces);
+        if (rc < 0) {
+            dbg_error("%s: Failed to initialize interfaces\n", __func__);
+            switch_exit(sw);
+            return -1;
+        }
+    }
+
+    /*
+     * Wait 20 ms to allow for linkup
+     */
+    up_udelay(20000);
+//    up_udelay(500000);
+    if (switch_internal_getattr(sw, SWSTA, &link_status)) {
+        dbg_error("Switch read status failed\n");
+        return -1;
+    }
+
+    dbg_info("%s: Link status: 0x%x\n", __func__, link_status);
+
+    uint32_t retries = 100;
+    while (retries--) {
+        rc = setup_default_routes(sw);
+        if (rc) {
+            printf(".");
+            up_udelay(100000);
+            rc = -1;
+        } else {
+            rc = 0;
+            break;
+        }
+    }
+
+    interface_exit();
+    switch_exit(sw);
+
+    return rc;
+}
+
+int svc_eng330(int bridge_first, int sweep, int delay) {
+    struct ara_board_info *info;
+    struct tsb_switch *sw;
+    int rc;
+
+//    dbg_set_config(DBG_SVC | DBG_SWITCH, DBG_ERROR);
+    dbg_set_config(0, DBG_ERROR);
+    if (the_svc.sw) {
+        dbg_info("SVC already initialized, aborting\n");
+        return 0;
+    }
+
+    // Allocate and zero the sw struct
+    sw = zalloc(sizeof(struct tsb_switch));
+    if (!sw)
+        return -ENOMEM;
+
+    /*
+     * Board-specific initialization, all boards must define this.
+     */
+    info = board_init(sw);
+    if (!info) {
+        dbg_error("%s: No board information provided.\n", __func__);
+        return -1;
+    }
+    the_svc.board_info = info;
+
+    rc = interface_init(info->interfaces,
+                            info->nr_interfaces,
+                            info->nr_spring_interfaces);
+    if (rc < 0) {
+        dbg_error("%s: Failed to initialize interfaces\n", __func__);
+        return -1;
+    }
+    interface_exit();
+
+    if (sweep) {
+        for (delay = 0; delay < 500000; delay += 500) {
+            printf("Delay %u ", delay);
+            rc = eng330_linkup_test(info, sw, bridge_first, delay);
+            if (rc) {
+                printf("FAIL\n");
+            } else {
+                printf("OK\n");
+            }
+        }
+    } else {
+        printf("Delay %u ", delay);
+        rc = eng330_linkup_test(info, sw, bridge_first, delay);
+        if (rc) {
+            printf("FAIL\n");
+        } else {
+            printf("OK\n");
+        }
+    }
+    svc_exit();
+
+    return 0;
+}

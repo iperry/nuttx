@@ -194,9 +194,9 @@ DECLARE_SPRING_INTERFACE(8, (GPIO_PORTG | GPIO_PIN15), 13,
  * Assumed by Spring Power Measurement Library (up_spring_pm.c).
  */
 static struct interface *bdb2a_interfaces[] = {
-    &apb1_interface,
-#if 0
     &apb2_interface,
+#if 0
+    &apb1_interface,
     &apb3_interface,
     &gpb1_interface,
     &gpb2_interface,

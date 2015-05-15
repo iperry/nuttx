@@ -64,6 +64,7 @@ enum {
     LINKTEST,
     LINKSTATUS,
     DME_IO,
+    ENG330,
     MAX_CMD,
 };
 
@@ -81,6 +82,7 @@ static const struct command commands[] = {
                   "test UniPro link power mode configuration"},
     [LINKSTATUS] = {'s', "linkstatus", "print UniPro link status bit mask"},
     [DME_IO]  = {'d', "dme", "get/set DME attributes"},
+    [ENG330] = {'e', "eng330", "run ENG-330 linkup test"}
 };
 
 static void usage(int exit_status) {
@@ -820,7 +822,51 @@ static int dme_io(int argc, char *argv[]) {
     }
 }
 
-static int ara_svc_main(int argc, char *argv[]) {
+void eng330_usage(void) {
+    printk("Usage: svc eng330 <bridge|switch> <sweep|[0-5000000]>\n");
+}
+
+static int eng330(int argc, char **argv) {
+    int bridge_first = 0;
+    int sweep = 0;
+    unsigned int delay = 0;
+    int rc;
+
+    if (argc < 4) {
+        eng330_usage();
+        return -1;
+    }
+
+    if (!strcmp(argv[2], "bridge")) {
+        bridge_first = 1;
+    } else if (!strcmp(argv[2], "switch")) {
+        bridge_first = 0;
+    } else {
+        eng330_usage();
+        return -1;
+    }
+
+    if (!strcmp(argv[3], "sweep")) {
+        sweep = 1;
+    } else {
+        delay = strtoul(argv[3], NULL, 10);
+        if (delay > 500000) {
+            printk("Max delay 500000\n");
+        }
+    }
+
+    printk("Booting %s first. Delay: %s\n", argv[2], argv[3]);
+
+    rc = svc_eng330(bridge_first, sweep, delay);
+    if (rc) {
+        printk("ENG330 test failed: %d", rc);
+        return -1;
+    }
+
+    return 0;
+}
+
+int ara_svc_main(int argc, char *argv[]) {
     /* Current main(), for configs/ara/svc (BDB1B, BDB2A, spiral 2
      * modules, etc.). */
     int rc = 0;
@@ -865,6 +911,9 @@ static int ara_svc_main(int argc, char *argv[]) {
         break;
     case DME_IO:
         rc = dme_io(argc, argv);
+        break;
+    case ENG330:
+        rc = eng330(argc, argv);
         break;
     default:
         usage(EXIT_FAILURE);
