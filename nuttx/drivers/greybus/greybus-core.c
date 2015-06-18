@@ -56,7 +56,7 @@ struct gb_cport_driver {
 };
 
 static atomic_t request_id;
-static struct gb_cport_driver g_cport[CPORT_MAX];
+static struct gb_cport_driver *g_cport;
 static struct gb_transport_backend *transport_backend;
 
 static int gb_compare_handlers(const void *data1, const void *data2)
@@ -218,7 +218,7 @@ int greybus_rx_handler(unsigned int cport, void *data, size_t size)
     struct gb_operation_hdr *hdr = data;
     struct gb_operation_handler *op_handler;
 
-    if (cport >= CPORT_MAX || !data)
+    if (cport >= unipro_cport_count() || !data)
         return -EINVAL;
 
     if (!g_cport[cport].driver || !g_cport[cport].driver->op_handlers)
@@ -256,7 +256,7 @@ int gb_register_driver(unsigned int cport, struct gb_driver *driver)
     DEBUGASSERT(transport_backend);
     DEBUGASSERT(transport_backend->listen);
 
-    if (cport >= CPORT_MAX || !driver)
+    if (cport >= unipro_cport_count() || !driver)
         return -EINVAL;
 
     if (g_cport[cport].driver)
@@ -471,7 +471,7 @@ struct gb_operation *gb_operation_create(unsigned int cport, uint8_t type,
     struct gb_operation *operation;
     struct gb_operation_hdr *hdr;
 
-    if (cport >= CPORT_MAX)
+    if (cport >= unipro_cport_count())
         return NULL;
 
     operation = malloc(sizeof(*operation));
@@ -517,13 +517,14 @@ size_t gb_operation_get_request_payload_size(struct gb_operation *operation)
 
 int gb_init(struct gb_transport_backend *transport)
 {
+    size_t size = sizeof(*g_cport) * unipro_cport_count();
     int i;
 
     if (!transport)
         return -EINVAL;
 
-    memset(&g_cport, 0, sizeof(g_cport));
-    for (i = 0; i < CPORT_MAX; i++) {
+    g_cport = zalloc(size);
+    for (i = 0; i < unipro_cport_count(); i++) {
         sem_init(&g_cport[i].rx_fifo_lock, 0, 0);
         list_init(&g_cport[i].rx_fifo);
         list_init(&g_cport[i].tx_fifo);
