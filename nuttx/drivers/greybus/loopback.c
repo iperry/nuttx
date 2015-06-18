@@ -34,7 +34,6 @@
 #include <nuttx/greybus/greybus.h>
 #include <nuttx/greybus/loopback.h>
 #include "loopback-gb.h"
-#include <arch/tsb/unipro.h>
 
 #define GB_LOOPBACK_VERSION_MAJOR 0
 #define GB_LOOPBACK_VERSION_MINOR 1

@@ -28,7 +28,6 @@
 
 #include <nuttx/config.h>
 #include <nuttx/ara_build_info.h>
-#include <arch/tsb/unipro.h>
 #include <debug.h>
 
 

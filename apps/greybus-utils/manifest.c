@@ -32,7 +32,6 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#include <arch/tsb/unipro.h>
 #include <apps/greybus-utils/utils.h>
 #include <nuttx/util.h>
 
