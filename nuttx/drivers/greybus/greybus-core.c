@@ -30,10 +30,10 @@
 
 #include <nuttx/config.h>
 #include <nuttx/list.h>
+#include <nuttx/unipro/unipro.h>
 #include <nuttx/greybus/greybus.h>
 #include <nuttx/greybus/debug.h>
 
-#include <arch/tsb/unipro.h>
 #include <arch/atomic.h>
 #include <arch/byteorder.h>
 

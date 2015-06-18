@@ -38,7 +38,6 @@
 #include <errno.h>
 
 #include <arch/tsb/gpio.h>
-#include <arch/tsb/unipro.h>
 #include <arch/tsb/device_table.h>
 #include <arch/tsb/driver.h>
 #include <apps/greybus-utils/utils.h>
