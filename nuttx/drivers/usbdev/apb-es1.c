@@ -205,7 +205,7 @@ struct apbridge_dev_s {
     struct list_head rdreq;
     struct list_head wrreq;
 
-    int cport_to_epin_n[CPORT_MAX];
+    int *cport_to_epin_n;
     int epout_to_cport_n[APBRIDGE_NBULKS];
 
     struct apbridge_usb_driver *driver;
@@ -1654,7 +1654,7 @@ int usbdev_apbinitialize(struct apbridge_usb_driver *driver)
     struct apbridge_dev_s *priv;
     struct apbridge_driver_s *drvr;
     int ret;
-    int i;
+    unsigned int i;
 
     /* Reset USB HSIC HUB */
     hsic_hub_reset();
@@ -1678,7 +1678,13 @@ int usbdev_apbinitialize(struct apbridge_usb_driver *driver)
     memset(priv, 0, sizeof(struct apbridge_dev_s));
     priv->driver = driver;
 
-    for (i = 0; i < CPORT_MAX; i++) {
+    priv->cport_to_epin_n = kmm_malloc(sizeof(int) * unipro_cport_count());
+    if (!priv->cport_to_epin_n) {
+        ret = -ENOMEM;
+        goto errout_with_alloc;
+    }
+
+    for (i = 0; i < unipro_cport_count(); i++) {
         priv->cport_to_epin_n[i] = CONFIG_APBRIDGE_EPBULKIN;
     }
     sem_init(&priv->config_sem, 0, 0);
@@ -1695,7 +1701,7 @@ int usbdev_apbinitialize(struct apbridge_usb_driver *driver)
     if (ret) {
         usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_DEVREGISTER),
                  (uint16_t) - ret);
-        goto errout_with_alloc;
+        goto errout_cport_table;
     }
     ret = priv->driver->init(priv);
     if (ret)
@@ -1706,6 +1712,8 @@ int usbdev_apbinitialize(struct apbridge_usb_driver *driver)
 
  errout_with_init:
     usbdev_unregister(&drvr->drvr);
+errout_cport_table:
+    kmm_free(priv->cport_to_epin_n);
  errout_with_alloc:
     kmm_free(alloc);
     return ret;
