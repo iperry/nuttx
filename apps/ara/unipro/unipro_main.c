@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #define NUM_CPORTS   (4)
 
@@ -96,10 +97,24 @@ static int attr_read(int argc, char **argv) {
     return 0;
 }
 
+#if 0
+void print_usage(char **argv) {
+    printf("Usage: %s [-r attr] [-w attr] [-\n");
+
+}
+#endif
+
 int unipro_main(int argc, char **argv) {
     char *op;
     int rc;
     char *attr_read_argv[2];
+    int c;
+    int read = 0;
+    int write = 0;
+    int peer = 0;
+    unsigned int selector = 0;
+    unsigned int attr;
+    uint32_t result_code;
 
     if (argc < 2) {
         return -1;
@@ -107,10 +122,10 @@ int unipro_main(int argc, char **argv) {
 
     op = argv[1];
 
-    if (strcmp(op, "r") == 0) {
-        printf("Attribute read:\n");
-        return attr_read(argc - 2, &argv[2]);
-
+    if (!strcmp(op, "read") || !strcmp(op, "r")) {
+        read = 1;
+    } else if (!strcmp(op, "write") || !strcmp(op, "w")) {
+        write = 1;
     } else if (strcmp(op, "init") == 0) {
         printf("Initializing unipro.\n");
         unipro_init();
@@ -119,22 +134,77 @@ int unipro_main(int argc, char **argv) {
             printf("Failed to register driver. rc: %d\n", rc);
             exit(1);
         }
-    } else if ((strcmp(op, "send") == 0) && argc == 3) {
+    } else if (!strcmp(op, "send") && argc == 3) {
         rc = unipro_send(strtoul(argv[2], NULL, 10), greybus_msg, sizeof greybus_msg);
         if (rc) {
             printf("Failed to send data. rc: %d\n", rc);
             exit(1);
         }
-    } else if (strcmp(op, "info") == 0) {
+        return 0;
+    } else if (!strcmp(op, "info")) {
         unipro_info();
-    } else if (strcmp(op, "tx") == 0) {
+        return 0;
+    } else if (!strcmp(op, "tx")) {
         attr_read_argv[0] = (char*) xstr(TSB_DEBUGTXBYTECOUNT);
         attr_read_argv[1] = (char*) "0";
-        attr_read(2, attr_read_argv);
+        return attr_read(2, attr_read_argv);
     } else if (strcmp(op, "rx") == 0) {
         attr_read_argv[0] = (char*) xstr(TSB_DEBUGRXBYTECOUNT);
         attr_read_argv[1] = (char*) "0";
-        attr_read(2, attr_read_argv);
+        return attr_read(2, attr_read_argv);
+    }
+
+    if (!strcmp(op, "read") || !strcmp(op, "r")) {
+        read = 1;
+    } else if (!strcmp(op, "write") || !strcmp(op, "w")) {
+        write = 1;
+    }
+
+    attr = strtoul(argv[2], NULL, 16);
+
+    int i;
+    for (i = 0; i < argc; i++ ) {
+        printf("%u: %s\n", i, argv[i]);
+    }
+
+    unsigned int val;
+    optind = -1; /* Force NuttX's getopt() to re-initialize. */
+    argc -= 2;   /* skip over the "unipro r/w" part */
+    char **args = argv + 2;
+    while (((c = getopt(argc, args, "ps:")) != -1)) {
+        printf("cur opt: %u %c\n", c, c);
+        switch (c) {
+        case 'p':
+            peer = 1;
+            break;
+        case 's':
+            selector = strtoul(optarg, NULL, 10);
+            break;
+            break;
+        }
+    }
+
+    if (write)  {
+        if (optind >= argc) {
+            printf("Must specify value to write\n");
+            return -1;
+        } else {
+            val = strtoul(args[optind], NULL, 16);
+        }
+    }
+
+    printf("%s: %x Peer: %d Selector: %u\n", read ? "Read" : "Write", attr, peer, selector);
+
+    rc = unipro_attr_access(attr, &val, selector, peer, !read, &result_code);
+    if (rc) {
+        printf("Attribute access failed: %u", rc);
+        return -1;
+    }
+
+    if (read) {
+        printf("[%x]: %x result_code: %x\n", attr, val, result_code);
+    } else {
+        printf("Wrote %x result_code: %x\n", val, result_code);
     }
 
     return 0;
