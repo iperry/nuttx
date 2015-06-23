@@ -33,13 +33,13 @@
 
 #include <stdlib.h>
 
+#include <nuttx/unipro/ubuf.h>
+
 #define CPORT_BUF_SIZE              (1024)
 
 struct unipro_driver {
     const char name[32];
-    int (*rx_handler)(unsigned int cportid,  // Called in irq context
-                      void *data,
-                      size_t len);
+    int (*rx_handler)(struct ubuf*);
 };
 
 unsigned int unipro_cport_count(void);

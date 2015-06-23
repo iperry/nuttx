@@ -32,6 +32,7 @@
 #include <nuttx/list.h>
 #include <nuttx/unipro/unipro.h>
 #include <nuttx/greybus/greybus.h>
+#include <nuttx/greybus/debug.h>
 
 #include <arch/atomic.h>
 
@@ -141,6 +142,13 @@ static void gb_process_response(struct gb_operation_hdr *hdr,
         .result = GB_OP_TIMEOUT,
     };
 
+    gb_info("processing response: %p\n", operation);
+
+    /*
+     * loop through the list of all op requests with waiting responses
+     *
+     * if it matches, call op->callback(op);
+     */
     list_foreach_safe(&g_cport[operation->cport].tx_fifo, iter, iter_next) {
         op = list_entry(iter, struct gb_operation, list);
         op_hdr = op->request_buffer;
@@ -172,8 +180,12 @@ static void gb_process_response(struct gb_operation_hdr *hdr,
 
         /* attach this response with the original request */
         op->response = operation;
-        if (op->callback)
+        /*
+         * copy the stuff into the respones buffer and free the operation?
+         */
+        if (op->callback) {
             op->callback(op);
+        }
         gb_operation_unref(op);
         break;
     }
@@ -190,6 +202,7 @@ static void *gb_pending_message_worker(void *data)
 
     while (1) {
         retval = sem_wait(&g_cport[cportid].rx_fifo_lock);
+        gb_info("pending work: %u retval: %u\n", cportid, retval);
         if (retval < 0)
             continue;
 
@@ -198,6 +211,12 @@ static void *gb_pending_message_worker(void *data)
         list_del(g_cport[cportid].rx_fifo.next);
         irqrestore(flags);
 
+        /*
+         * grab a ubuf from the list.
+         *
+         * hdr = ubuf->data;
+         * gb_process_response(hdr, operation);
+         */
         operation = list_entry(head, struct gb_operation, list);
         hdr = operation->request_buffer;
 
@@ -211,12 +230,26 @@ static void *gb_pending_message_worker(void *data)
     return NULL;
 }
 
-int greybus_rx_handler(unsigned int cport, void *data, size_t size)
+int greybus_rx_handler(struct ubuf *ub)
 {
     irqstate_t flags;
     struct gb_operation *op;
-    struct gb_operation_hdr *hdr = data;
+    struct gb_operation_hdr *hdr;
     struct gb_operation_handler *op_handler;
+
+
+    unsigned int cport = ub->cportid;
+    void *data = ub->data;
+    size_t size = ub->size;
+    hdr = (struct gb_operation_hdr *)ub->data;
+
+    unsigned int i;
+    gb_info("ubuf: %p\n", ub);
+    gb_info("boooo: data: %p cport: %u\n", data, cport);
+    for (i = 0; i < ub->size; i++) {
+        gb_info("data[%u]: %x\n", i, ub->data[i]);
+
+    }
 
     if (cport >= unipro_cport_count() || !data)
         return -EINVAL;
@@ -233,6 +266,9 @@ int greybus_rx_handler(unsigned int cport, void *data, size_t size)
         return 0;
     }
 
+    /*
+     * push the ubuf onto a list. it must be returned to the pool at some point
+     */
     op = gb_operation_create(cport, 0, hdr->size - sizeof(*hdr));
     if (!op)
         return -ENOMEM;
@@ -287,6 +323,9 @@ int gb_register_driver(unsigned int cport, struct gb_driver *driver)
     if (retval)
         goto pthread_attr_setstacksize_error;
 
+    /*
+     * really?? start a thread even before listen?
+     */
     retval = pthread_create(&g_cport[cport].thread, &thread_attr,
                             gb_pending_message_worker, (unsigned*) cport);
     if (retval)
@@ -337,6 +376,7 @@ int gb_operation_send_request(struct gb_operation *operation,
         clock_gettime(CLOCK_REALTIME, &operation->time);
         operation->callback = callback;
         gb_operation_ref(operation);
+        gb_info("adding op to txfifo\n");
         list_add(&g_cport[operation->cport].tx_fifo, &operation->list);
     }
 
@@ -354,6 +394,7 @@ int gb_operation_send_request(struct gb_operation *operation,
 
 static void gb_operation_callback_sync(struct gb_operation *operation)
 {
+    gb_info("waking op: %p\n", operation);
     sem_post(&operation->sync_sem);
 }
 
@@ -369,7 +410,9 @@ int gb_operation_send_request_sync(struct gb_operation *operation)
         return retval;
 
     do {
+        gb_info("sleeping: %p\n", operation);
         retval = sem_wait(&operation->sync_sem);
+        gb_info("woke up\n");
     } while (retval < 0 && errno == EINTR);
 
     return retval;

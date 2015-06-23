@@ -36,6 +36,7 @@
 
 #include <arch/atomic.h>
 #include <nuttx/list.h>
+#include <nuttx/unipro/ubuf.h>
 
 struct gb_operation;
 
@@ -72,6 +73,9 @@ struct gb_operation {
     bool has_responded;
     atomic_t ref_count;
     struct timespec time;
+
+    struct ubuf *req_ub;
+    struct ubuf *resp_ub;
 
     void *request_buffer;
     void *response_buffer;
@@ -148,7 +152,7 @@ struct gb_operation *gb_operation_create(unsigned int cport, uint8_t type,
 void gb_operation_ref(struct gb_operation *operation);
 void gb_operation_unref(struct gb_operation *operation);
 size_t gb_operation_get_request_payload_size(struct gb_operation *operation);
-int greybus_rx_handler(unsigned int, void*, size_t);
+int greybus_rx_handler(struct ubuf*);
 
 void gb_gpio_register(int cport);
 void gb_i2c_register(int cport);

@@ -46,6 +46,8 @@
 #include "tsb_unipro_es2.h"
 #include "tsb_es2_mphy_fixups.h"
 
+#define UNIPRO_DEBUG
+
 #ifdef UNIPRO_DEBUG
 #define DBG_UNIPRO(fmt, ...) lldbg(fmt, __VA_ARGS__)
 #else
@@ -68,6 +70,8 @@ struct cport {
     uint8_t *rx_buf;                // RX region for this CPort
     unsigned int cportid;
     int connected;
+
+    struct ubuf *ub;
 };
 
 #define CPORT_RX_BUF_BASE         (0x20000000U)
@@ -337,7 +341,6 @@ static inline void enable_rx_interrupt(struct cport *cport) {
  */
 static int irq_rx_eom(int irq, void *context) {
     struct cport *cport = irqn_to_cport(irq);
-    void *data = cport->rx_buf;
     uint32_t transferred_size;
     (void)context;
 
@@ -347,11 +350,18 @@ static int irq_rx_eom(int irq, void *context) {
     DBG_UNIPRO("cport: %u driver: %s size=%u payload=0x%x\n",
                 cport->cportid,
                 cport->driver->name,
-                data);
+                transferred_size,
+                cport->ub->data);
 
+    /*
+     * previously allocated a ubuf at driver registration time.
+     *
+     * now it's filled. add it to the list, and wake the receive thread.
+     */
+
+    cport->ub->size = transferred_size;
     if (cport->driver->rx_handler) {
-        cport->driver->rx_handler(cport->cportid, data,
-                                  (size_t)transferred_size);
+        cport->driver->rx_handler(cport->ub);
     }
     clear_rx_interrupt(cport);
 
@@ -397,7 +407,7 @@ static void enable_int(unsigned int cportid) {
     unsigned int irqn;
 
     cport = cport_handle(cportid);
-    if (!cport || !cport->connected) {
+    if (!cport) {
         return;
     }
 
@@ -558,6 +568,21 @@ void unipro_info(void)
     dump_regs();
 }
 
+
+
+int timespec_diff(struct timespec *res, struct timespec *start, struct timespec *end)
+{
+
+    if ((end->tv_nsec - start->tv_nsec) < 0) {
+        res->tv_sec = end->tv_sec - start->tv_sec - 1;
+        res->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
+    } else {
+        res->tv_sec =  end->tv_sec - start->tv_sec;
+        res->tv_nsec = end->tv_nsec - start->tv_nsec;
+    }
+    return 0;
+}
+
 /**
  * @brief Initialize one UniPro cport
  */
@@ -566,16 +591,15 @@ int unipro_init_cport(unsigned int cportid)
     int ret;
     irqstate_t flags;
     struct cport *cport = cport_handle(cportid);
-
     if (cport->connected)
         return 0;
 
     /*
      * Initialize cport.
      */
-    ret = configure_connected_cport(cportid);
-    if (ret)
-        return ret;
+//    ret = configure_connected_cport(cportid);
+//    if (ret)
+//        return ret;
 
     /*
      * FIXME: We presently specify a fixed receive buffer address
@@ -599,7 +623,7 @@ int unipro_init_cport(unsigned int cportid)
     irqrestore(flags);
 
 #ifdef UNIPRO_DEBUG
-    unipro_info();
+//    unipro_info();
 #endif
 
     return 0;
@@ -613,22 +637,38 @@ void unipro_init(void)
     unsigned int i;
     size_t table_size = sizeof(struct cport) * unipro_cport_count();
 
+    struct timespec tp_start, tp_now, tp_diff;
+    unsigned int count = 0;
+
+    clock_gettime(CLOCK_REALTIME, &tp_start);
+    while (1) {
+        clock_gettime(CLOCK_REALTIME, &tp_now);
+        timespec_diff(&tp_diff, &tp_start, &tp_now);
+        if (tp_diff.tv_sec > 10) {
+            lldbg("Count: %u\n", count);
+            break;
+        }
+        tsb_get_product_id();
+        tsb_get_product_id();
+        tsb_get_product_id();
+        tsb_get_product_id();
+        tsb_get_product_id();
+        count++;
+    }
+    while (1)
+        ;
+
+
+
     if (es2_fixup_mphy()) {
         lldbg("Failed to apply M-PHY fixups (results in link instability at HS-G1).\n");
     }
 
-    cporttable = zalloc(table_size);
+    cporttable = malloc(table_size);
     if (!cporttable) {
         return;
     }
-
-    for (i = 0; i < unipro_cport_count(); i++) {
-        struct cport *cp = &cporttable[i];
-        cp->tx_buf = CPORT_TX_BUF(i);
-        cp->rx_buf = CPORT_RX_BUF(i);
-        cp->cportid = i;
-        cp->connected = 0;
-    }
+    memset(cporttable, 0x0, table_size);
 
     /*
      * Set transfer mode 2 on all cports
@@ -642,11 +682,15 @@ void unipro_init(void)
     /*
      * Initialize connected cports.
      */
-    unipro_write(UNIPRO_INT_EN, 0x0);
-    for (i = 0; i < unipro_cport_count(); i++) {
-        unipro_init_cport(i);
-    }
-    unipro_write(UNIPRO_INT_EN, 0x1);
+//    unipro_write(UNIPRO_INT_EN, 0x0);
+//    for (i = 0; i < unipro_cport_count(); i++) {
+//        unipro_init_cport(i);
+//    }
+//    unipro_write(UNIPRO_INT_EN, 0x1);
+
+    /*
+     * make receive thread handler
+     */
 
 #ifdef UNIPRO_DEBUG
     unipro_info();
@@ -674,10 +718,10 @@ int unipro_send(unsigned int cportid, const void *buf, size_t len)
         return -EINVAL;
     }
 
-    if (!cport->connected) {
-        lldbg("CP%d unconnected\n", cport->cportid);
-        return -EPIPE;
-    }
+//    if (!cport->connected) {
+//        lldbg("CP%d unconnected\n", cport->cportid);
+//        return -EPIPE;
+//    }
 
     DEBUGASSERT(TRANSFER_MODE == 2);
 
@@ -742,6 +786,12 @@ int unipro_attr_write(uint16_t attr,
     return unipro_attr_access(attr, &val, selector, peer, 1, result_code);
 }
 
+int unipro_cp_init(struct ubuf *ub) {
+    unipro_write(AHM_ADDRESS_00, (uint32_t)ub->data);
+    unipro_write(REG_RX_PAUSE_SIZE_00, (1 << 31) | ub->size);
+    return 0;
+}
+
 /**
  * @brief Register a driver with the unipro core
  * @param drv unipro driver to register
@@ -751,6 +801,9 @@ int unipro_attr_write(uint16_t attr,
 int unipro_driver_register(struct unipro_driver *driver, unsigned int cportid)
 {
     struct cport *cport = cport_handle(cportid);
+    struct ubuf *ub;
+    irqstate_t flags;
+
     if (!cport) {
         return -ENODEV;
     }
@@ -760,11 +813,43 @@ int unipro_driver_register(struct unipro_driver *driver, unsigned int cportid)
               cport->driver->name);
         return -EEXIST;
     }
-
     cport->driver = driver;
+
+    cport->cportid = cportid;
+
+    /*
+     * Back cport with one ubuf.
+     */
+//    ub = unipro_buf_alloc(CPORT_BUF_SIZE);
+    if (!ub) {
+        cport->driver = NULL;
+        return -ENOMEM;
+    }
+    ub->cportid = cportid;
+    ub->size = CPORT_BUF_SIZE;
+    cport->ub = ub;
+
+    lldbg("ubuf: %p\n", ub);
+    /*
+     * FIXME: We presently specify a fixed receive buffer address
+     *        for each CPort.  That approach won't work for a
+     *        pipelined zero-copy system.
+     */
+    unipro_write(AHM_ADDRESS_00 + (cportid * sizeof(uint32_t)),
+                 (uint32_t)ub->data);
+
+    /* Start the flow of received data */
+    unipro_write(REG_RX_PAUSE_SIZE_00 + (cportid * sizeof(uint32_t)),
+                 (1 << 31) | ub->size);
+
+    flags = irqsave();
+    clear_int(cportid);
+    enable_int(cportid);
+    irqrestore(flags);
 
     lldbg("Registered driver %s on %sconnected CP%u\n",
           cport->driver->name, cport->connected ? "" : "un",
           cport->cportid);
     return 0;
 }
+

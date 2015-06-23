@@ -31,7 +31,10 @@
 #include <nuttx/config.h>
 #include <nuttx/arch.h>
 #include <nuttx/util.h>
+#include <nuttx/unipro/unipro.h>
 #include <nuttx/greybus/unipro.h>
+#include <nuttx/greybus/greybus.h>
+#include <nuttx/greybus/types.h>
 
 #include <arch/board/board.h>
 
@@ -42,15 +45,45 @@
 #include "ara_board.h"
 #include "up_debug.h"
 #include "interface.h"
-#include "tsb_switch.h"
 #include "svc.h"
 #include "vreg.h"
+#include "tsb_switch_driver_es2.h"
 
 #define SVCD_PRIORITY      (60)
 #define SVCD_STACK_SIZE    (2048)
 
+enum module_state {
+    MODULE_STATE_BOOTED,
+    MODULE_STATE_PROBED,
+};
+
+struct module {
+    int is_ap;
+    enum module_state state;
+
+};
+
+
 static struct svc the_svc;
 struct svc *svc = &the_svc;
+
+static struct unipro_driver svc_greybus_driver = {
+    .name = "svcd-greybus",
+    .rx_handler = greybus_rx_handler,
+};
+
+static int svc_listen(unsigned int cport) {
+    return unipro_driver_register(&svc_greybus_driver, cport);
+}
+
+extern void gb_cp_register(int cport);
+static struct gb_transport_backend svc_backend = {
+    .init = unipro_init,
+    .send = unipro_send,
+    .listen = svc_listen,
+};
+
+extern uint8_t svc_gb_cp_probe_ap(__u8 endo_id, __u8 intf_id);
 
 /* state helpers */
 #define svcd_state_running() (svc->state == SVC_STATE_RUNNING)
@@ -59,6 +92,7 @@ static inline void svcd_set_state(enum svc_state state){
     svc->state = state;
 }
 
+volatile int booted = 0;
 
 /*
  * Static connections table
@@ -267,6 +301,83 @@ static int setup_default_routes(struct tsb_switch *sw) {
     return 0;
 }
 
+static struct unipro_connection c = {
+    .port_id0 = 14,
+    .device_id0 = 0,
+    .cport_id0 = 4,
+
+    .port_id1 = 4,
+    .device_id1 = 1,
+    .cport_id1 = 0,
+    .flags = CPORT_FLAGS_E2EFC | CPORT_FLAGS_CSD_N | CPORT_FLAGS_CSV_N,
+};
+
+static int check_ap(unsigned int portid) {
+    int rc;
+
+    rc = switch_if_dev_id_set(svc->sw, portid, 1);
+    if (rc) {
+        dbg_error("failed to assign device id\n");
+        return rc;
+    }
+
+    rc = switch_setup_routing_table(svc->sw, 0, 14, 1, portid);
+    if (rc) {
+        dbg_error("failed to assign device id\n");
+        return rc;
+    }
+
+    rc = switch_connection_create(svc->sw, &c);
+    if (rc) {
+        dbg_error("failed to make connection\n");
+        return rc;
+    }
+
+    /* turn on e2efc */
+    uint32_t spictlb = 0xC;
+    if (switch_internal_setattr(svc->sw, SPICTLB, spictlb)) {
+        dbg_error("failed to set spictlb\n");
+    }
+
+    switch_dump_routing_table(svc->sw);
+
+    svc_gb_cp_probe_ap(0xde, 0xad);
+    dbg_info("done probing\n");
+
+//    switch_connection_destroy(svc->sw, &c);
+//    spictlb = 0x0;
+//    if (switch_internal_setattr(svc->sw, SPICTLB, spictlb)) {
+//        dbg_error("failed to set spictlb\n");
+//    }
+//    dbg_info("done destroying\n");
+
+    /*
+     * now tear it down?
+     */
+    return 0;
+}
+
+static int svcd_switch_event_cb(struct tsb_switch_event *event) {
+    struct hotplug_event *hp_event;
+
+    pthread_mutex_lock(&svc->lock);
+    dbg_info("event received. port: %u val: %u\n", event->mbox.port, event->mbox.val);
+
+    /*
+     * check for ap here?
+     */
+    hp_event = malloc(sizeof *hp_event);
+    hp_event->portid = event->mbox.port;
+    hp_event->val = event->mbox.val;
+
+    list_add(&svc->hotplug_events, &hp_event->entry);
+
+    pthread_cond_signal(&svc->cv);
+    pthread_mutex_unlock(&svc->lock);
+
+    return 0;
+}
+
 static int svcd_startup(void) {
     struct ara_board_info *info;
     struct tsb_switch *sw;
@@ -303,11 +414,42 @@ static int svcd_startup(void) {
         goto error2;
     }
 
-    /* Set up default routes */
-    rc = setup_default_routes(sw);
-    if (rc) {
-        dbg_error("%s: Failed to set default routes\n", __func__);
-    }
+//    /* Set up default routes */
+//    rc = setup_default_routes(sw);
+//    if (rc) {
+//        dbg_error("%s: Failed to set default routes\n", __func__);
+//    }
+
+    rc = switch_event_register_listener(sw, &svc->evl);
+
+    /* initialize greybus. unipro stack is initialized at the same time. */
+    gb_init(&svc_backend);
+    gb_cp_register(4);
+
+    /*
+     * What now?
+     *
+     * Start probing all the interfaces until we find the ap.
+     *
+     * track state in cp
+     * wait for bootup events. for each boot up event. send a probe()
+     * until we find the ap.
+     *
+     * who does this?
+     * SVC? CP?
+     * 
+     * 1) Set up CP to AP module
+     * 2) Create SVC connection to AP module
+     * 3) Send connected() on CP to AP module.
+     *
+     * Non AP:
+     * 1) Send hotplug to AP on SVC conenction
+     * 2) AP sends create_connection() request
+     * 3) Make connection. E2EFC off?
+     * 4) Send connected() to module
+     * 5) Send connected() to AP
+     */
+
 
     /*
      * Enable the switch IRQ
@@ -349,7 +491,6 @@ static int svcd_cleanup(void) {
     return 0;
 }
 
-
 static int svcd_main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -368,6 +509,23 @@ static int svcd_main(int argc, char **argv) {
             dbg_verbose("svc stop requested\n");
             break;
         }
+
+        if (!svc->ap_found) {
+            struct hotplug_event *hp;
+            struct list_head *node, *next;
+            dbg_info("hotpolug event\n");
+            /*
+             * for each detected interface, send a probe_ap() request.
+             *     set a connection on cp0
+             *     send probe_ap(), if auth_size == 0, take it down.
+             *     if auth_size > 0, set that as the ap.
+             */
+            list_foreach_safe(&svc->hotplug_events, node, next) {
+                hp = list_entry(node, struct hotplug_event, entry);
+                dbg_info("hotpolug event: port: %u val: %u\n", hp->portid, hp->val);
+                check_ap(hp->portid);
+            }
+        }
     };
 
     rc = svcd_cleanup();
@@ -384,6 +542,8 @@ done:
 int svc_init(int argc, char **argv) {
     int rc;
 
+    dbg_set_config(DBG_SVC | DBG_SWITCH, DBG_INFO);
+
     svc->sw = NULL;
     svc->board_info = NULL;
     svc->svcd_pid = 0;
@@ -391,6 +551,9 @@ int svc_init(int argc, char **argv) {
     pthread_mutex_init(&svc->lock, NULL);
     pthread_cond_init(&svc->cv, NULL);
     svcd_set_state(SVC_STATE_STOPPED);
+    list_init(&svc->hotplug_events);
+
+    svc->evl.cb = svcd_switch_event_cb;
 
     rc = svcd_start();
     if (rc) {
@@ -423,6 +586,7 @@ int svcd_start(void) {
 
     svc->stop = 0;
     svcd_set_state(SVC_STATE_RUNNING);
+    dbg_info("svcd started\n");
     pthread_mutex_unlock(&svc->lock);
 
     return 0;

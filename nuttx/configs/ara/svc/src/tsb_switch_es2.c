@@ -36,6 +36,7 @@
 #include <nuttx/config.h>
 #include <nuttx/arch.h>
 #include <nuttx/spi/spi.h>
+#include <nuttx/unipro/unipro.h>
 
 #include <pthread.h>
 #include <errno.h>
@@ -352,6 +353,11 @@ static int es2_write(struct tsb_switch *sw,
         if (tx_size >= rpt.tx_fifo_size) {
             return -ENOMEM;
         }
+
+        dbg_info("%s: status report:\n", __func__);
+        dbg_print_buf(DBG_INFO, rpt.raw, sizeof rpt.raw);
+
+        dbg_info("%s: tx_fifo_size: %u\n", __func__, rpt.tx_fifo_size);
         break;
     default:
         return -EINVAL;
@@ -504,6 +510,82 @@ static int es2_ncp_transfer(struct tsb_switch *sw,
 done:
     pthread_mutex_unlock(&priv->ncp_cport.lock);
 
+    return rc;
+}
+
+/**
+ * @brief Process rx fifo interrupts. Empty the fifo and then pass it off
+ * to the unipro stack
+ */
+static int es2_irq_fifo_rx(struct tsb_switch *sw, unsigned int cport) {
+    struct sw_es2_priv *priv = sw->priv;
+    struct srpt_read_status_report rpt;
+    pthread_mutex_t *lock = cport == 4 ? &priv->data_cport4.lock :
+                                         &priv->data_cport5.lock;
+    int rc = 0;
+
+    pthread_mutex_lock(lock);
+
+    /*
+     * Figure out how much data we have available in the fifo. One message
+     * may span multiple entries. This is unsupported for now.
+     */
+    rc = es2_read_status(sw, cport, &rpt);
+    if (rc) {
+        rc = -EIO;
+        goto fill_done;
+    }
+
+    dbg_info("bytes available: %u\n\n", rpt.rx_fifo_size);
+    struct ubuf *ub = ubuf_alloc(rpt.rx_fifo_size);
+    if (!ub) {
+        /*
+         * what do we do here? turn off this interrupt? until we have memory?
+         */
+        dbg_error("OOM!\n");
+        rc = -ENOMEM;
+        goto fill_done;
+    }
+    ub->cportid = cport;
+
+    /*
+     * Drain the fifo data into the new ubuf.
+     */
+    rc = es2_read(sw, cport, ub->data, ub->size);
+    if (rc) {
+        dbg_info("failed to read\n");
+        rc = -EIO;
+        goto fill_done;
+    }
+
+    dbg_print_buf(DBG_INFO, ub->data, ub->size);
+
+fill_done:
+    pthread_mutex_unlock(lock);
+    if (rc) {
+        return rc;
+    }
+
+    /*
+     * hand it off to the unipro stack.
+     */
+    unipro_if_rx(ub);
+
+    return 0;
+}
+
+static int es2_ubuf_send(struct tsb_switch *sw, struct ubuf *ub) {
+    struct sw_es2_priv *priv = sw->priv;
+    int rc;
+
+    pthread_mutex_lock(&priv->data_cport4.lock);
+    rc = es2_write(sw, ub->cportid, ub->data, ub->size);
+    if (rc) {
+        dbg_info("booog????\n");
+    } else {
+//        dbg_info("sent buf\n");
+    }
+    pthread_mutex_unlock(&priv->data_cport4.lock);
     return rc;
 }
 
@@ -761,6 +843,7 @@ int es2_switch_irq_handler(struct tsb_switch *sw)
         // Handle external interrupts: CPorts 4 & 5
         if (swint & TSB_INTERRUPT_SPIPORT4_RX) {
             dbg_insane("IRQ: Switch SPI port 4 RX irq\n");
+            es2_irq_fifo_rx(sw, 4);
         }
         if (swint & TSB_INTERRUPT_SPIPORT5_RX) {
             dbg_insane("IRQ: Switch SPI port 5 RX irq\n");
@@ -1567,6 +1650,8 @@ static struct tsb_switch_ops es2_ops = {
 
     .switch_irq_enable     = es2_switch_irq_enable,
     .switch_irq_handler    = es2_switch_irq_handler,
+
+    .switch_data_send      = es2_ubuf_send,
 };
 
 int tsb_switch_es2_init(struct tsb_switch *sw, unsigned int spi_bus)

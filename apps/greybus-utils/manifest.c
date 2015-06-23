@@ -44,6 +44,7 @@ extern void gb_battery_register(int cport);
 extern void gb_loopback_register(int cport);
 extern void gb_vibrator_register(int cport);
 extern void gb_usb_register(int cport);
+extern void gb_cp_register(int cport);
 
 struct greybus {
     struct list_head cports;
@@ -100,6 +101,11 @@ void enable_cports(void)
         id = gb_cport->id;
         protocol = gb_cport->protocol;
 
+        if (protocol == GREYBUS_PROTOCOL_CONTROL) {
+            gb_cp_register(0);
+        }
+
+#if 0
 #ifdef CONFIG_GREYBUS_GPIO_PHY
         if (protocol == GREYBUS_PROTOCOL_GPIO) {
             gb_info("Registering GPIO greybus driver.\n");
@@ -140,6 +146,7 @@ void enable_cports(void)
             gb_info("Registering USB greybus driver.\n");
             gb_usb_register(id);
         }
+#endif
 #endif
     }
 }

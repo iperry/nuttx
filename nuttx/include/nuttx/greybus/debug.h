@@ -29,6 +29,7 @@
 #ifndef _GREYBUS_UTILS_DEBUG_H_
 #define _GREYBUS_UTILS_DEBUG_H_
 
+#include <nuttx/irq.h>
 #include <debug.h>
 #include <nuttx/config.h>
 #include <nuttx/greybus/types.h>

@@ -39,6 +39,7 @@
 #include <nuttx/list.h>
 #include <nuttx/greybus/unipro.h>
 #include <nuttx/greybus/tsb_unipro.h>
+#include <nuttx/unipro/ubuf.h>
 
 /* Switch internal attributes */
 #define SWVER                       (0x0000)
@@ -247,6 +248,8 @@ struct tsb_switch_ops {
     int (*switch_irq_enable)(struct tsb_switch *sw,
                              bool enable);
     int (*switch_irq_handler)(struct tsb_switch *sw);
+
+    int (*switch_data_send)(struct tsb_switch *, struct ubuf*);
 };
 
 struct tsb_switch {
@@ -290,6 +293,9 @@ int switch_if_dev_id_set(struct tsb_switch *sw,
                          uint8_t dev_id);
 int switch_connection_create(struct tsb_switch *sw,
                              struct unipro_connection *conn);
+int switch_connection_destroy(struct tsb_switch *sw,
+                              struct unipro_connection *conn);
+
 
 
 int switch_configure_link(struct tsb_switch *sw,
@@ -461,5 +467,10 @@ int switch_internal_setattr(struct tsb_switch *sw,
 int switch_irq_enable(struct tsb_switch *sw,
                       bool enable);
 int switch_post_irq(struct tsb_switch *sw);
+
+/*
+ * data send function
+ */
+int switch_data_send(struct tsb_switch*, struct ubuf*);
 
 #endif

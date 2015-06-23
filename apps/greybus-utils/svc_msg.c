@@ -29,7 +29,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <debug.h>
+#include <nuttx/greybus/debug.h>
 
 #include <apps/greybus-utils/manifest.h>
 #include "svc_msg.h"

@@ -37,6 +37,7 @@
 #ifndef __CONFIGS_ENDO_INCLUDE_UP_DEBUG_H
 #define __CONFIGS_ENDO_INCLUDE_UP_DEBUG_H
 
+#include <arch/stdarg.h>
 #include <debug.h>
 #include <stdio.h>
 #include <stdlib.h>

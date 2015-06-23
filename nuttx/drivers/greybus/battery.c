@@ -32,6 +32,7 @@
 #include <stdlib.h>
 
 #include <nuttx/greybus/greybus.h>
+#include <nuttx/greybus/debug.h>
 #include <apps/greybus-utils/utils.h>
 
 #include "battery-gb.h"

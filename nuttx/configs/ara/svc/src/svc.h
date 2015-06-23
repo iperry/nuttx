@@ -30,10 +30,17 @@
 #define  _SVC_H_
 
 #include <pthread.h>
+#include "tsb_switch.h"
 
 enum svc_state {
     SVC_STATE_STOPPED,
     SVC_STATE_RUNNING,
+};
+
+struct hotplug_event {
+    unsigned int portid;
+    unsigned int val;
+    struct list_head entry;
 };
 
 struct svc {
@@ -45,6 +52,11 @@ struct svc {
     pid_t svcd_pid;
     pthread_mutex_t lock;
     pthread_cond_t cv;
+    int ap_found;
+
+    struct tsb_switch_event_listener evl;
+
+    struct list_head hotplug_events;
 };
 
 extern struct svc *svc;

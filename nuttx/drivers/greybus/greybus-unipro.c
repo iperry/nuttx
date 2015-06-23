@@ -39,16 +39,15 @@ static struct unipro_driver greybus_driver = {
 
 static int gb_unipro_listen(unsigned int cport)
 {
-    int ret;
+    return unipro_driver_register(&greybus_driver, cport);
 
-    do {
-        ret = unipro_init_cport(cport);
-        if (!ret)
-            ret = unipro_driver_register(&greybus_driver, cport);
-        else
-            usleep(200000);
-    } while (ret == -ENOTCONN);
-    return ret;
+//    do {
+//        ret = unipro_init_cport(cport);
+//        if (!ret)
+//            ret = unipro_driver_register(&greybus_driver, cport);
+//        else
+//            usleep(200000);
+//    } while (ret == -ENOTCONN);
 }
 
 struct gb_transport_backend gb_unipro_backend = {

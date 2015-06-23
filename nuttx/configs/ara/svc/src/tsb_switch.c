@@ -280,6 +280,16 @@ int switch_dev_id_mask_set(struct tsb_switch *sw,
 }
 
 /*
+ * data transfer function
+ */
+int switch_data_send(struct tsb_switch *sw, struct ubuf *ub) {
+    if (!sw->ops->switch_data_send) {
+        return -EOPNOTSUPP;
+    }
+    return sw->ops->switch_data_send(sw, ub);
+}
+
+/*
  * Switch internal configuration commands
  */
 int switch_internal_getattr(struct tsb_switch *sw,
@@ -781,6 +791,17 @@ err0:
                c->flags,
                rc);
     return rc;
+}
+
+int switch_connection_destroy(struct tsb_switch *sw,
+                              struct unipro_connection *c) {
+    int rc;
+    rc = switch_set_pair_attr(sw, c, T_CONNECTIONSTATE, 0, 0);
+    if (rc) {
+        return rc;
+    }
+
+    return 0;
 }
 
 static int switch_detect_devices(struct tsb_switch *sw,
