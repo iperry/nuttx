@@ -247,6 +247,8 @@ struct tsb_switch_ops {
     int (*switch_irq_enable)(struct tsb_switch *sw,
                              bool enable);
     int (*switch_irq_handler)(struct tsb_switch *sw);
+
+    int (*switch_data_send)(struct tsb_switch *, void *, size_t);
 };
 
 struct tsb_switch {
@@ -461,5 +463,7 @@ int switch_internal_setattr(struct tsb_switch *sw,
 int switch_irq_enable(struct tsb_switch *sw,
                       bool enable);
 int switch_post_irq(struct tsb_switch *sw);
+
+int switch_data_send(struct tsb_switch *sw, void *data, size_t len);
 
 #endif
